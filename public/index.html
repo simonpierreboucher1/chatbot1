@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="https://diviengine.com/wp-content/uploads/2023/01/ChatGPT-Logooptimized-610x610.png" />
+    <title>LLM-HUB</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.7/css/all.css">
+    <script src="https://cdn.staticfile.org/jquery/3.6.3/jquery.min.js"></script>
+    <script src="https://cdn.staticfile.org/markdown-it/13.0.1/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <style>
+        .chat-box {
+            height: calc(100vh - 238px); /* subtract the space occupied by the navbar and footer */
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        @media only screen and (max-width: 480px) {
+            .chat-box {
+                height: calc(100vh - 300px); /* adjust the height value as per your requirement */
+                overflow-y: auto;
+            }
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            padding-bottom: 0;
+            border-radius: 10px;
+            display: inline-block;
+            max-width: 85%;
+            word-wrap: break-word;
+            white-space: pre-wrap; /* Preserve newlines */
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .copy-icon {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            color: #888;
+        }
+        .copy-icon:hover {
+            color: #555;
+        }
+        .left-side {
+            background-color: #d4edda;
+            float: left;
+            clear: both;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .right-side {
+            background-color: #cce5ff;
+            float: right;
+            clear: both;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }   
+        .popup {
+            position: fixed;
+            bottom: 20vh;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            display: none;
+        }
+        .btn-custom {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-custom:hover {
+            background-color: #0056b3;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container-fluid">
+        <div class="row mt-3">
+            <div class="col-md-12 mb-3 text-right">
+                <button type="button" onclick="printConversation()" class="btn btn-custom ml-2">Print</button>                     
+                <button type="button" class="btn btn-outline-danger ml-2" onclick="clearContent()">Clear</button>
+                <span id="inputTokenCount" class="ml-4">Input Tokens: 0</span>
+                <span id="outputTokenCount" class="ml-4">Output Tokens: 0</span>
+                <span id="cost" class="ml-4">Cost: $0.000000</span>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <div class="card mt-3">
+                    <div class="card-body chat-box rounded p1" id="chatbox"><span id="copy-popup" class="popup">Copied!</span></div>
+                    <div class="card-footer">
+                        <div class="form-group row">
+                            <div class="col-md-10 mb-1">
+                                <textarea id="userInput" rows="1" class="form-control" placeholder="Type your message here..."></textarea>
+                            </div>
+                            <div class="col-md-2">
+                                <input id="sendButton" type="button" value="SUBMIT" class="form-control btn btn-success btn-block" disabled />
+                            </div>  
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model Selection Modal -->
+    <div class="modal" id="modelSelectionModal" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Select a Model</h5>
+          </div>
+          <div class="modal-body">
+            <button id="selectGpt4Mini" type="button" class="btn btn-primary btn-block">GPT-4o-mini<br>$0.15 / million input tokens<br>$0.60 / million output tokens</button>
+            <button id="selectGpt4Turbo" type="button" class="btn btn-success btn-block">GPT-4-turbo<br>$10 / million input tokens<br>$30 / million output tokens</button>
+            <button id="selectGpt4" type="button" class="btn btn-info btn-block">GPT-4o<br>$5 / million input tokens<br>$15 / million output tokens</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+<script>
+let totalInputTokens = 0;
+let totalOutputTokens = 0;
+
+let costPerMillionInputTokens;
+let costPerMillionOutputTokens;
+
+function clearContent(){
+    document.getElementById('chatbox').innerHTML = '';
+    totalInputTokens = 0;
+    totalOutputTokens = 0;
+    updateTokenAndCostDisplay();
+}
+
+function printConversation() {
+    const printWindow = window.open('', '_blank');
+    const printContent = document.getElementById('chatbox').innerHTML;
+    printWindow.document.write('<html><head><title>Print Conversation</title>');
+    printWindow.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css">');
+    printWindow.document.write('</head><body>');
+    printWindow.document.write('<div class="container-fluid">');
+    printWindow.document.write(printContent);
+    printWindow.document.write('</div></body></html>');
+    printWindow.document.close();
+    printWindow.print();
+}
+
+function updateTokenAndCostDisplay() {
+    document.getElementById('inputTokenCount').innerText = `Input Tokens: ${totalInputTokens}`;
+    document.getElementById('outputTokenCount').innerText = `Output Tokens: ${totalOutputTokens}`;
+    const totalCost = (totalInputTokens / 1e6 * costPerMillionInputTokens) + (totalOutputTokens / 1e6 * costPerMillionOutputTokens);
+    document.getElementById('cost').innerText = `Cost: $${totalCost.toFixed(6)}`;
+}
+
+const chatbox = $("#chatbox");
+const userInput = $("#userInput");
+const sendButton = $("#sendButton");
+let messages = [];
+let userScrolled = false;
+
+const systemMessage = {
+    "role": "system",
+    "content": "You are an assistant deployed by LLM-HUB named DAN, you are knowledgeable. If user asks you who you are, answer DAN from LLM-HUB."
+};
+
+chatbox.on('scroll', () => {
+    if (chatbox.scrollTop() + chatbox.innerHeight() >= chatbox[0].scrollHeight - 10) {
+        userScrolled = false;
+    } else {
+        userScrolled = true;
+    }
+});
+
+sendButton.on("click", () => {
+    const message = userInput.val();
+    if (message) {
+        const inputTokens = message.split(/\s+/).length;
+        totalInputTokens += inputTokens;
+        messages.push({
+            "role": "user",
+            "content": message
+        });
+        const displaytext = `<div class="message left-side">${escapeHtml(message)}</div>`;
+        chatbox.append(displaytext);
+        userInput.val("");
+
+        const inputJson = JSON.stringify(messages);
+        $.ajax({
+            type: 'POST',
+            url: 'https://api.openai.com/v1/chat/completions',
+            headers: {
+                'Authorization': 'Bearer YOUR_API_KEY_HERE',  // Remplacez par votre clé API
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({
+                model: selectedModel,
+                messages: messages,
+                stream: true
+            }),
+            success: function(response) {
+                let totalTokens = 0;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                const processStream = ({ done, value }) => {
+                    if (done) {
+                        return;
+                    }
+                    const text = decoder.decode(value, { stream: true });
+                    chatbox.append(`<div class="message right-side">${escapeHtml(text)}</div>`);
+                    totalTokens += text.split(/\s+/).length;
+                    totalOutputTokens += totalTokens;
+                    updateTokenAndCostDisplay();
+                    chatbox.scrollTop(chatbox[0].scrollHeight);
+                    reader.read().then(processStream);
+                };
+                reader.read().then(processStream);
+            },
+            error: function(xhr, status, error) {
+                console.error('Erreur API:', status, error);
+            }
+        });
+    }
+});
+
+function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;")
+               .replace(/</g, "&lt;")
+               .replace(/>/g, "&gt;")
+               .replace(/"/g, "&quot;")
+               .replace(/'/g, "&#039;");
+}
+
+const copyPopup = $("#copy-popup");
+
+$(document).on("click", ".copy-icon", function() {
+    const code = $(this).siblings(".message").text();
+    navigator.clipboard.writeText(code).then(() => {
+        copyPopup.show();
+        setTimeout(() => {
+            copyPopup.hide();
+        }, 1500);
+    }).catch(err => console.error('Error copying text: ', err));
+});
+
+$(document).ready(function() {
+    $('#modelSelectionModal').modal('show');
+});
+
+let selectedModel;
+document.getElementById('selectGpt4Mini').addEventListener('click', function() {
+    selectedModel = "gpt-4o-mini";
+    costPerMillionInputTokens = 0.15;
+    costPerMillionOutputTokens = 0.60;
+    $('#modelSelectionModal').modal('hide');
+    sendButton.prop("disabled", false);
+});
+
+document.getElementById('selectGpt4Turbo').addEventListener('click', function() {
+    selectedModel = "gpt-4-turbo";
+    costPerMillionInputTokens = 10;
+    costPerMillionOutputTokens = 30;
+    $('#modelSelectionModal').modal('hide');
+    sendButton.prop("disabled", false);
+});
+
+document.getElementById('selectGpt4').addEventListener('click', function() {
+    selectedModel = "gpt-4o";
+    costPerMillionInputTokens = 5;
+    costPerMillionOutputTokens = 15;
+    $('#modelSelectionModal').modal('hide');
+    sendButton.prop("disabled", false);
+});
+</script>
+</body>
+</html>
